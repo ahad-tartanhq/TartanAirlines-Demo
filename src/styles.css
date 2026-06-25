@@ -1,0 +1,560 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ---------------------------------------------------------------------------
+ * Tartan Airlines brand fonts (loaded via Google Fonts <link> in __root.tsx):
+ * "Poppins" for headings/display, "DM Sans" for body text. Matches the clean,
+ * rounded-geometric look of tartanhq.com.
+ * ------------------------------------------------------------------------- */
+
+/*
+ * Design system definition.
+ *
+ * The @theme inline block maps CSS custom properties to Tailwind utility
+ * classes (e.g. --color-primary -> bg-primary, text-primary).
+ *
+ * The :root and .dark blocks define the actual color values using oklch.
+ * All colors MUST use oklch format.
+ *
+ * To add a new semantic color:
+ * 1. Add the variable to :root (light value) and .dark (dark value)
+ * 2. Register it in @theme inline as --color-<name>: var(--<name>)
+ */
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
+  --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Poppins", "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-ring-offset-background: var(--background);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+:root {
+  --radius: 0.625rem;
+  --background: oklch(0.995 0 0);
+  --foreground: oklch(0.18 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.18 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.18 0 0);
+  --primary: oklch(0.18 0 0);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.96 0 0);
+  --secondary-foreground: oklch(0.24 0 0);
+  --muted: oklch(0.96 0 0);
+  --muted-foreground: oklch(0.50 0 0);
+  --accent: oklch(0.94 0 0);
+  --accent-foreground: oklch(0.20 0 0);
+  --destructive: oklch(0.40 0 0);
+  --destructive-foreground: oklch(0.99 0 0);
+  --border: oklch(0.90 0 0);
+  --input: oklch(0.90 0 0);
+  --ring: oklch(0.30 0 0);
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+  --sidebar: oklch(0.984 0.003 247.858);
+  --sidebar-foreground: oklch(0.129 0.042 264.695);
+  --sidebar-primary: oklch(0.208 0.042 265.755);
+  --sidebar-primary-foreground: oklch(0.984 0.003 247.858);
+  --sidebar-accent: oklch(0.968 0.007 247.896);
+  --sidebar-accent-foreground: oklch(0.208 0.042 265.755);
+  --sidebar-border: oklch(0.929 0.013 255.508);
+  --sidebar-ring: oklch(0.704 0.04 256.788);
+}
+
+.dark,
+.theme-midnight {
+  --background: oklch(0.129 0.042 264.695);
+  --foreground: oklch(0.984 0.003 247.858);
+  --card: oklch(0.208 0.042 265.755);
+  --card-foreground: oklch(0.984 0.003 247.858);
+  --popover: oklch(0.208 0.042 265.755);
+  --popover-foreground: oklch(0.984 0.003 247.858);
+  --primary: oklch(0.929 0.013 255.508);
+  --primary-foreground: oklch(0.208 0.042 265.755);
+  --secondary: oklch(0.279 0.041 260.031);
+  --secondary-foreground: oklch(0.984 0.003 247.858);
+  --muted: oklch(0.279 0.041 260.031);
+  --muted-foreground: oklch(0.704 0.04 256.788);
+  --accent: oklch(0.279 0.041 260.031);
+  --accent-foreground: oklch(0.984 0.003 247.858);
+  --destructive: oklch(0.704 0.191 22.216);
+  --destructive-foreground: oklch(0.984 0.003 247.858);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.551 0.027 264.364);
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
+  --sidebar: oklch(0.208 0.042 265.755);
+  --sidebar-foreground: oklch(0.984 0.003 247.858);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.984 0.003 247.858);
+  --sidebar-accent: oklch(0.279 0.041 260.031);
+  --sidebar-accent-foreground: oklch(0.984 0.003 247.858);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.551 0.027 264.364);
+}
+
+/* ---------------------------------------------------------------------------
+ * Additional togglable themes. Each class is applied to <html> by the theme
+ * toggle and overrides the semantic color tokens. Light themes pair with a
+ * sun icon, dark themes with a moon icon in the toggle button.
+ * ------------------------------------------------------------------------- */
+
+/* Warm Sand — soft, welcoming light theme */
+.theme-sand {
+  --background: oklch(0.985 0.012 85);
+  --foreground: oklch(0.26 0.025 60);
+  --card: oklch(0.998 0.008 85);
+  --card-foreground: oklch(0.26 0.025 60);
+  --popover: oklch(0.998 0.008 85);
+  --popover-foreground: oklch(0.26 0.025 60);
+  --primary: oklch(0.48 0.075 55);
+  --primary-foreground: oklch(0.99 0.012 85);
+  --secondary: oklch(0.935 0.022 80);
+  --secondary-foreground: oklch(0.32 0.03 60);
+  --muted: oklch(0.935 0.02 80);
+  --muted-foreground: oklch(0.52 0.03 62);
+  --accent: oklch(0.91 0.035 72);
+  --accent-foreground: oklch(0.28 0.03 60);
+  --destructive: oklch(0.52 0.16 28);
+  --destructive-foreground: oklch(0.99 0.012 85);
+  --border: oklch(0.89 0.025 75);
+  --input: oklch(0.89 0.025 75);
+  --ring: oklch(0.48 0.075 55);
+}
+
+/* Ocean Deep — calm, professional dark blue/teal theme */
+.theme-ocean {
+  --background: oklch(0.205 0.04 240);
+  --foreground: oklch(0.95 0.012 230);
+  --card: oklch(0.26 0.05 240);
+  --card-foreground: oklch(0.95 0.012 230);
+  --popover: oklch(0.26 0.05 240);
+  --popover-foreground: oklch(0.95 0.012 230);
+  --primary: oklch(0.72 0.12 200);
+  --primary-foreground: oklch(0.16 0.03 240);
+  --secondary: oklch(0.31 0.05 240);
+  --secondary-foreground: oklch(0.95 0.012 230);
+  --muted: oklch(0.31 0.05 240);
+  --muted-foreground: oklch(0.74 0.03 220);
+  --accent: oklch(0.34 0.06 235);
+  --accent-foreground: oklch(0.95 0.012 230);
+  --destructive: oklch(0.68 0.17 22);
+  --destructive-foreground: oklch(0.98 0.01 230);
+  --border: oklch(1 0 0 / 12%);
+  --input: oklch(1 0 0 / 16%);
+  --ring: oklch(0.72 0.12 200);
+}
+
+/* Emerald Prestige — rich, authoritative dark green theme */
+.theme-emerald {
+  --background: oklch(0.19 0.03 162);
+  --foreground: oklch(0.96 0.012 150);
+  --card: oklch(0.24 0.04 162);
+  --card-foreground: oklch(0.96 0.012 150);
+  --popover: oklch(0.24 0.04 162);
+  --popover-foreground: oklch(0.96 0.012 150);
+  --primary: oklch(0.74 0.13 155);
+  --primary-foreground: oklch(0.16 0.03 162);
+  --secondary: oklch(0.28 0.04 162);
+  --secondary-foreground: oklch(0.96 0.012 150);
+  --muted: oklch(0.28 0.04 162);
+  --muted-foreground: oklch(0.75 0.03 150);
+  --accent: oklch(0.31 0.05 160);
+  --accent-foreground: oklch(0.96 0.012 150);
+  --destructive: oklch(0.68 0.17 22);
+  --destructive-foreground: oklch(0.98 0.01 150);
+  --border: oklch(1 0 0 / 12%);
+  --input: oklch(1 0 0 / 16%);
+  --ring: oklch(0.74 0.13 155);
+}
+
+/* Noir & Gold — luxe black with gold accents (dark) */
+.theme-noir {
+  --background: oklch(0.16 0.005 90);
+  --foreground: oklch(0.95 0.01 90);
+  --card: oklch(0.21 0.006 90);
+  --card-foreground: oklch(0.95 0.01 90);
+  --popover: oklch(0.21 0.006 90);
+  --popover-foreground: oklch(0.95 0.01 90);
+  --primary: oklch(0.78 0.12 85);
+  --primary-foreground: oklch(0.16 0.02 90);
+  --secondary: oklch(0.26 0.008 90);
+  --secondary-foreground: oklch(0.95 0.01 90);
+  --muted: oklch(0.26 0.008 90);
+  --muted-foreground: oklch(0.72 0.02 88);
+  --accent: oklch(0.30 0.02 88);
+  --accent-foreground: oklch(0.95 0.01 90);
+  --destructive: oklch(0.66 0.17 25);
+  --destructive-foreground: oklch(0.98 0.01 90);
+  --border: oklch(1 0 0 / 12%);
+  --input: oklch(1 0 0 / 16%);
+  --ring: oklch(0.78 0.12 85);
+}
+
+/* Charcoal & Ember — dark charcoal with warm ember accent (dark) */
+.theme-ember {
+  --background: oklch(0.19 0.005 40);
+  --foreground: oklch(0.95 0.008 40);
+  --card: oklch(0.24 0.006 40);
+  --card-foreground: oklch(0.95 0.008 40);
+  --popover: oklch(0.24 0.006 40);
+  --popover-foreground: oklch(0.95 0.008 40);
+  --primary: oklch(0.66 0.18 38);
+  --primary-foreground: oklch(0.98 0.01 40);
+  --secondary: oklch(0.29 0.008 40);
+  --secondary-foreground: oklch(0.95 0.008 40);
+  --muted: oklch(0.29 0.008 40);
+  --muted-foreground: oklch(0.72 0.02 40);
+  --accent: oklch(0.33 0.03 40);
+  --accent-foreground: oklch(0.95 0.008 40);
+  --destructive: oklch(0.62 0.2 28);
+  --destructive-foreground: oklch(0.98 0.01 40);
+  --border: oklch(1 0 0 / 12%);
+  --input: oklch(1 0 0 / 16%);
+  --ring: oklch(0.66 0.18 38);
+}
+
+/* Vapor Chrome — iridescent indigo/violet (dark) */
+.theme-vapor {
+  --background: oklch(0.21 0.05 285);
+  --foreground: oklch(0.95 0.015 290);
+  --card: oklch(0.26 0.06 285);
+  --card-foreground: oklch(0.95 0.015 290);
+  --popover: oklch(0.26 0.06 285);
+  --popover-foreground: oklch(0.95 0.015 290);
+  --primary: oklch(0.72 0.16 300);
+  --primary-foreground: oklch(0.16 0.04 285);
+  --secondary: oklch(0.31 0.06 285);
+  --secondary-foreground: oklch(0.95 0.015 290);
+  --muted: oklch(0.31 0.06 285);
+  --muted-foreground: oklch(0.76 0.04 295);
+  --accent: oklch(0.34 0.08 290);
+  --accent-foreground: oklch(0.95 0.015 290);
+  --destructive: oklch(0.68 0.17 22);
+  --destructive-foreground: oklch(0.98 0.01 290);
+  --border: oklch(1 0 0 / 12%);
+  --input: oklch(1 0 0 / 16%);
+  --ring: oklch(0.72 0.16 300);
+}
+
+/* Slate & Steel — cool grey enterprise (light) */
+.theme-slate {
+  --background: oklch(0.975 0.004 250);
+  --foreground: oklch(0.27 0.03 255);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.27 0.03 255);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.27 0.03 255);
+  --primary: oklch(0.45 0.07 255);
+  --primary-foreground: oklch(0.99 0.003 250);
+  --secondary: oklch(0.93 0.01 250);
+  --secondary-foreground: oklch(0.32 0.03 255);
+  --muted: oklch(0.93 0.01 250);
+  --muted-foreground: oklch(0.52 0.03 255);
+  --accent: oklch(0.90 0.02 250);
+  --accent-foreground: oklch(0.30 0.03 255);
+  --destructive: oklch(0.55 0.18 25);
+  --destructive-foreground: oklch(0.99 0.003 250);
+  --border: oklch(0.88 0.012 250);
+  --input: oklch(0.88 0.012 250);
+  --ring: oklch(0.45 0.07 255);
+}
+
+/* Blush & Lavender — soft, romantic (light) */
+.theme-blush {
+  --background: oklch(0.98 0.012 350);
+  --foreground: oklch(0.30 0.04 330);
+  --card: oklch(0.995 0.008 350);
+  --card-foreground: oklch(0.30 0.04 330);
+  --popover: oklch(0.995 0.008 350);
+  --popover-foreground: oklch(0.30 0.04 330);
+  --primary: oklch(0.55 0.15 330);
+  --primary-foreground: oklch(0.99 0.01 350);
+  --secondary: oklch(0.94 0.025 340);
+  --secondary-foreground: oklch(0.35 0.04 330);
+  --muted: oklch(0.94 0.025 340);
+  --muted-foreground: oklch(0.53 0.05 335);
+  --accent: oklch(0.91 0.04 320);
+  --accent-foreground: oklch(0.33 0.04 330);
+  --destructive: oklch(0.55 0.18 25);
+  --destructive-foreground: oklch(0.99 0.01 350);
+  --border: oklch(0.90 0.03 340);
+  --input: oklch(0.90 0.03 340);
+  --ring: oklch(0.55 0.15 330);
+}
+
+/* Forest & Moss — organic deep green (dark, cooler than emerald) */
+.theme-forest {
+  --background: oklch(0.21 0.025 145);
+  --foreground: oklch(0.95 0.015 130);
+  --card: oklch(0.26 0.03 145);
+  --card-foreground: oklch(0.95 0.015 130);
+  --popover: oklch(0.26 0.03 145);
+  --popover-foreground: oklch(0.95 0.015 130);
+  --primary: oklch(0.70 0.12 135);
+  --primary-foreground: oklch(0.17 0.03 145);
+  --secondary: oklch(0.30 0.03 145);
+  --secondary-foreground: oklch(0.95 0.015 130);
+  --muted: oklch(0.30 0.03 145);
+  --muted-foreground: oklch(0.74 0.03 135);
+  --accent: oklch(0.33 0.04 140);
+  --accent-foreground: oklch(0.95 0.015 130);
+  --destructive: oklch(0.66 0.17 25);
+  --destructive-foreground: oklch(0.98 0.01 130);
+  --border: oklch(1 0 0 / 12%);
+  --input: oklch(1 0 0 / 16%);
+  --ring: oklch(0.70 0.12 135);
+}
+
+/* Coral Pop — energetic coral on near-white (light) */
+.theme-coral {
+  --background: oklch(0.98 0.008 30);
+  --foreground: oklch(0.26 0.03 25);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.26 0.03 25);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.26 0.03 25);
+  --primary: oklch(0.64 0.19 25);
+  --primary-foreground: oklch(0.99 0.008 30);
+  --secondary: oklch(0.94 0.02 30);
+  --secondary-foreground: oklch(0.32 0.03 25);
+  --muted: oklch(0.94 0.02 30);
+  --muted-foreground: oklch(0.52 0.04 28);
+  --accent: oklch(0.91 0.035 28);
+  --accent-foreground: oklch(0.30 0.03 25);
+  --destructive: oklch(0.58 0.2 22);
+  --destructive-foreground: oklch(0.99 0.008 30);
+  --border: oklch(0.89 0.02 30);
+  --input: oklch(0.89 0.02 30);
+  --ring: oklch(0.64 0.19 25);
+}
+
+/* --- Air India — deep crimson red & Chakra gold on warm white ----------- */
+.theme-airindia {
+  --background: oklch(0.99 0.006 60);
+  --foreground: oklch(0.22 0.04 25);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.22 0.04 25);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.22 0.04 25);
+  --primary: oklch(0.50 0.205 21);
+  --primary-foreground: oklch(0.99 0.01 70);
+  --secondary: oklch(0.95 0.02 70);
+  --secondary-foreground: oklch(0.30 0.05 25);
+  --muted: oklch(0.95 0.018 70);
+  --muted-foreground: oklch(0.50 0.04 35);
+  --accent: oklch(0.80 0.13 80);
+  --accent-foreground: oklch(0.25 0.05 40);
+  --destructive: oklch(0.52 0.21 25);
+  --destructive-foreground: oklch(0.99 0.01 70);
+  --border: oklch(0.90 0.02 60);
+  --input: oklch(0.90 0.02 60);
+  --ring: oklch(0.50 0.205 21);
+  --chart-1: oklch(0.50 0.205 21);
+  --chart-2: oklch(0.80 0.13 80);
+  --chart-3: oklch(0.40 0.08 30);
+  --chart-4: oklch(0.65 0.16 45);
+  --chart-5: oklch(0.72 0.10 70);
+  --gold: oklch(0.80 0.13 85);
+  --gold-deep: oklch(0.68 0.13 70);
+  --gradient-gold: linear-gradient(135deg, oklch(0.86 0.10 95), oklch(0.72 0.14 70));
+  /* Aubergine — the brand's deep signature surface (footers, hero CTAs). */
+  --aubergine: oklch(0.31 0.078 350);
+  --aubergine-foreground: oklch(0.95 0.02 80);
+}
+
+/* ---------------------------------------------------------------------------
+ * Air India — golden accents. These are scoped to the theme so they only
+ * appear when the Air India palette is active and never touch other themes.
+ * ------------------------------------------------------------------------- */
+
+/* Hero badge pills get a soft gold wash + gold border. */
+.theme-airindia [class*="rounded-full"][class*="border-border"] {
+  border-color: color-mix(in oklab, var(--gold) 55%, transparent);
+  background-image: linear-gradient(
+    135deg,
+    color-mix(in oklab, var(--gold) 16%, transparent),
+    transparent
+  );
+}
+
+/* Primary buttons get a thin gold top sheen for a premium feel. */
+.theme-airindia [class*="bg-primary"]:not([class*="/"]) {
+  box-shadow:
+    inset 0 1px 0 0 color-mix(in oklab, var(--gold) 45%, transparent),
+    0 1px 2px 0 color-mix(in oklab, var(--foreground) 12%, transparent);
+}
+
+/* Cards get a delicate gold hairline instead of a flat grey border. */
+.theme-airindia [class*="rounded-3xl"][class*="border-border"],
+.theme-airindia [class*="rounded-2xl"][class*="border-border"] {
+  border-color: color-mix(in oklab, var(--gold-deep) 35%, var(--border));
+}
+
+/* Nav / inline anchors pick up a gold hover underline. */
+.theme-airindia nav a {
+  background-image: var(--gradient-gold);
+  background-repeat: no-repeat;
+  background-position: 0 100%;
+  background-size: 0% 2px;
+  transition: background-size 0.25s ease;
+  padding-bottom: 2px;
+}
+.theme-airindia nav a:hover {
+  background-size: 100% 2px;
+}
+
+
+/* ===========================================================================
+ * LAYOUT STYLE PACKS
+ * ---------------------------------------------------------------------------
+ * These classes are applied to <html> by the layout toggle and are fully
+ * INDEPENDENT of the color themes above — any theme can combine with any
+ * layout. They re-shape the *structure & feel* of the UI (corner language,
+ * density, depth/shadows, borders and display typography) without touching
+ * the semantic color tokens, so the two systems mix & match freely.
+ *
+ * Density trick: Tailwind spacing/sizing is rem-based, so changing the root
+ * font-size rescales padding, gaps, radii and text together for a genuine
+ * "denser / airier" feel.
+ * ------------------------------------------------------------------------- */
+
+/* --- Compact — dense enterprise console -------------------------------- */
+.layout-compact {
+  font-size: 13.5px;
+  --radius: 0.3rem;
+}
+.layout-compact [class*="shadow-"] {
+  box-shadow: 0 1px 2px 0 color-mix(in oklab, var(--foreground) 8%, transparent) !important;
+}
+
+/* --- Soft — airy, pillowy, friendly ----------------------------------- */
+.layout-soft {
+  font-size: 16.5px;
+  --radius: 1.4rem;
+}
+.layout-soft [class*="shadow-sm"] {
+  box-shadow: 0 6px 20px -6px color-mix(in oklab, var(--foreground) 14%, transparent) !important;
+}
+.layout-soft [class*="shadow-lg"],
+.layout-soft [class*="shadow-xl"],
+.layout-soft [class*="shadow-2xl"] {
+  box-shadow: 0 28px 60px -18px color-mix(in oklab, var(--foreground) 24%, transparent) !important;
+}
+
+/* --- Editorial — flat magazine, sharp corners, serif display ---------- */
+.layout-editorial {
+  font-size: 16px;
+  --font-display: "Fraunces", "Iowan Old Style", "Palatino Linotype", "Georgia", serif;
+}
+.layout-editorial [class*="shadow-"] {
+  box-shadow: none !important;
+}
+.layout-editorial h1,
+.layout-editorial h2,
+.layout-editorial h3 {
+  letter-spacing: -0.015em;
+}
+
+/* --- Elevated — floating cards, dramatic depth, borderless feel ------- */
+.layout-elevated {
+  font-size: 15.5px;
+  --radius: 1rem;
+}
+.layout-elevated [class*="shadow-"] {
+  box-shadow: 0 22px 55px -16px color-mix(in oklab, var(--foreground) 30%, transparent) !important;
+}
+
+/* --- Brutalist — mono, hard offset shadows, thick ink borders --------- */
+.layout-brutal {
+  font-size: 15px;
+  --font-display: "Space Mono", ui-monospace, "SF Mono", "Menlo", monospace;
+  --font-sans: "Space Mono", ui-monospace, "SF Mono", "Menlo", monospace;
+}
+.layout-brutal [class*="shadow-"] {
+  box-shadow: 5px 5px 0 0 var(--foreground) !important;
+}
+.layout-brutal [class*="border"] {
+  border-color: var(--foreground) !important;
+}
+.layout-brutal h1,
+.layout-brutal h2,
+.layout-brutal h3 {
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+/* Sharp-corner layouts: flatten every rounded-* utility (radius tokens are
+ * inlined off --radius, so override border-radius directly). Keep rounded-full
+ * so circular badges, avatars and pills stay round. */
+.layout-editorial [class*="rounded"]:not([class*="rounded-full"]),
+.layout-brutal [class*="rounded"]:not([class*="rounded-full"]) {
+  border-radius: 0 !important;
+}
+
+
+
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+  }
+}

@@ -1,0 +1,375 @@
+import type { BusinessType, BusinessVertical, RepresentativeRole } from "./types";
+
+export const VERTICALS: BusinessVertical[] = [
+  "Automotive",
+  "Banking",
+  "Consumer",
+  "Diplomatic Missions",
+  "Education",
+  "Electronics",
+  "Energy",
+  "Engineering",
+  "Fast-moving consumer goods (FMCG)",
+  "Financial (Finance)",
+  "FinTech",
+  "Food and beverage",
+  "Government - federal, state, local",
+  "Healthcare Insurance",
+  "Jewelry",
+  "Legal",
+  "Manufacturing",
+  "Media",
+  "Not-for-profit",
+  "Oil and gas",
+  "Online (Start-Ups)",
+  "Others",
+  "Raw materials",
+  "Real estate",
+  "Religion",
+  "Retail",
+  "Technology",
+  "Telecommunications",
+  "Transportation (Travel)",
+];
+
+export const BUSINESS_TYPES: BusinessType[] = [
+  "Branch Office & Project Office",
+  "Colleges and Universities (set up through enactment of a statute)",
+  "Company",
+  "Diplomatic Missions",
+  "HUF Business",
+  "Liaison Office",
+  "Limited Liability Partnership",
+  "Others",
+  "Partnership",
+  "Partnership Firm",
+  "Private Limited",
+  "Public Limited",
+  "Society",
+  "Sole Proprietorship",
+  "Trust",
+];
+
+export const INDIAN_STATES = [
+  "Andhra Pradesh", "Assam", "Bihar", "Chhattisgarh", "Delhi", "Goa", "Gujarat",
+  "Haryana", "Himachal Pradesh", "Jharkhand", "Karnataka", "Kerala", "Madhya Pradesh",
+  "Maharashtra", "Odisha", "Punjab", "Rajasthan", "Tamil Nadu", "Telangana",
+  "Uttar Pradesh", "Uttarakhand", "West Bengal",
+];
+
+// Central policy config used by the decision engine.
+export const KYB_POLICY = {
+  dinGraceDays: 7,
+  allowConditionalEntityApproval: true,
+  allowEmployeeAuthorisationAutoPass: false,
+  requireRecentGstFilings: true,
+  allowTradeNameMatch: false,
+  requireFssaiForFood: true,
+  requireIecForImportExport: false,
+  strictAddressMatch: false,
+  manualReviewForSpecialEntities: true,
+};
+
+export const SIMILARITY_THRESHOLDS = {
+  strongPass: 0.9,
+  manualReviewLow: 0.75,
+};
+
+// Representative role labels for the signatory step.
+export const REPRESENTATIVE_OPTIONS: { value: RepresentativeRole; label: string }[] = [
+  { value: "director_kmp", label: "Yes, I am a Director / KMP / Company Secretary / CFO" },
+  { value: "designated_partner", label: "Yes, I am a Designated Partner / Partner" },
+  { value: "proprietor", label: "Yes, I am the Proprietor" },
+  { value: "trustee_karta", label: "Yes, I am the Karta / Trustee / Office Bearer / Institutional Signatory" },
+  { value: "authorised_employee", label: "Yes, I am an authorised employee / admin" },
+  { value: "on_behalf", label: "No, I am filling this on behalf of someone else" },
+];
+
+export const ACCEPTABLE_DIN_DESIGNATIONS = [
+  "DIRECTOR",
+  "MANAGING DIRECTOR",
+  "WHOLETIME DIRECTOR",
+  "WHOLE TIME DIRECTOR",
+  "ADDITIONAL DIRECTOR",
+  "COMPANY SECRETARY",
+  "CFO",
+  "CFO(KMP)",
+  "KMP",
+];
+
+// Business-type template metadata. Drives required docs, required APIs, and rule text
+// shown in the Tally Matrix viewer. Engine logic references these labels.
+export interface BusinessTypeTemplate {
+  type: BusinessType;
+  alias?: BusinessType; // routing alias note
+  requiredApis: string[];
+  requiredDocs: string[];
+  optionalDocLabels: string[];
+  requiresCin: boolean;
+  dinApplicable: boolean;
+  specialEntity: boolean; // manual-review-by-default class
+  entityPass: string[];
+  signatoryPass: string[];
+  conditionalPass: string[];
+  manualReview: string[];
+  fail: string[];
+}
+
+const COMMON_OPTIONAL_DOCS = [
+  "Certificate of Incorporation",
+  "Board resolution",
+  "Partnership deed",
+  "LLP agreement",
+  "Trust deed",
+  "Society registration certificate",
+  "UGC/statutory recognition",
+  "RBI approval",
+  "Authorisation letter",
+  "FSSAI licence",
+  "IEC certificate",
+  "Udyam certificate",
+];
+
+export const BUSINESS_TYPE_TEMPLATES: Record<BusinessType, BusinessTypeTemplate> = {
+  "Private Limited": {
+    type: "Private Limited",
+    requiredApis: ["GST Detailed III", "PAN to GST Detailed", "PAN to CIN", "CIN Detailed", "DIN Detailed (if Director/KMP)"],
+    requiredDocs: ["GST Registration Certificate", "PAN Card", "Certificate of Incorporation"],
+    optionalDocLabels: ["Board resolution", "Authorisation letter"],
+    requiresCin: true,
+    dinApplicable: true,
+    specialEntity: false,
+    entityPass: ["GST active", "PAN linked to GSTIN", "Constitution = Private Limited Company", "PAN to CIN returns matching CIN", "CIN status ACTIVE", "CIN companyName matches GST legal name + business name", "No duplicate", "Docs match"],
+    signatoryPass: ["DIN found in CIN directorDetails or DIN associatedCompanies includes CIN", "Name matches", "Designation acceptable"],
+    conditionalPass: ["Entity passes but DIN not submitted — DIN Pending (7-day deadline)"],
+    manualReview: ["DIN valid but not under company", "User is authorised employee", "Name/address mismatch", "Compliance stale", "PAN maps to multiple CINs"],
+    fail: ["GST inactive/cancelled", "PAN-GST mismatch", "PAN-CIN mismatch", "CIN struck off", "Constitution not company-like", "DIN invalid", "DIN not submitted after 7 days", "Docs conflict"],
+  },
+  "Public Limited": {
+    type: "Public Limited",
+    requiredApis: ["GST Detailed III", "PAN to GST Detailed", "PAN to CIN", "CIN Detailed", "DIN Detailed"],
+    requiredDocs: ["GST Registration Certificate", "PAN Card", "Certificate of Incorporation"],
+    optionalDocLabels: ["Board resolution"],
+    requiresCin: true,
+    dinApplicable: true,
+    specialEntity: false,
+    entityPass: ["GST active", "PAN-GST match", "CIN class = PUBLIC", "CIN status ACTIVE", "GST legal name matches CIN", "No unallowed stock-exchange suspension"],
+    signatoryPass: ["DIN in directorDetails for same CIN", "Name/designation match"],
+    conditionalPass: ["Entity passes but DIN pending within 7 days"],
+    manualReview: ["suspendedAtStockExchange populated", "Old compliance dates", "Signatory is employee/admin", "Name/address mismatch"],
+    fail: ["GST cancelled", "CIN inactive", "Class not public", "PAN-CIN mismatch", "DIN mismatch", "DIN missing after 7 days"],
+  },
+  Company: {
+    type: "Company",
+    requiredApis: ["GST Detailed III", "PAN to GST Detailed", "PAN to CIN", "CIN Detailed"],
+    requiredDocs: ["GST Registration Certificate", "PAN Card", "Certificate of Incorporation"],
+    optionalDocLabels: ["Board resolution", "Authorisation letter"],
+    requiresCin: true,
+    dinApplicable: true,
+    specialEntity: false,
+    entityPass: ["API reclassifies into Private/Public/OPC/Section 8", "GST/PAN/CIN align"],
+    signatoryPass: ["Same as reclassified subtype"],
+    conditionalPass: ["Reclassified successfully but DIN pending"],
+    manualReview: ["Company selected but GST constitution vague"],
+    fail: ["GST constitution is proprietorship/partnership/trust/HUF/society and cannot reconcile"],
+  },
+  "Limited Liability Partnership": {
+    type: "Limited Liability Partnership",
+    requiredApis: ["GST Detailed III", "PAN to GST Detailed", "CIN/LLPIN/DIN (only if LLP records present)"],
+    requiredDocs: ["GST Registration Certificate", "PAN Card", "LLP agreement"],
+    optionalDocLabels: ["Authorisation letter"],
+    requiresCin: false,
+    dinApplicable: false,
+    specialEntity: false,
+    entityPass: ["GST active", "PAN linked to GSTIN", "Constitution maps to LLP", "Name/address match"],
+    signatoryPass: ["Designated partner DIN matches if available, else LLP agreement / authorisation matches user"],
+    conditionalPass: ["Entity passes but designated partner proof pending"],
+    manualReview: ["DIN cannot be tied to LLP", "GST says partnership not LLP", "User is employee/admin"],
+    fail: ["GST inactive", "PAN-GST mismatch", "Constitution says company/proprietorship/trust", "No authority proof after deadline"],
+  },
+  "Partnership Firm": {
+    type: "Partnership Firm",
+    requiredApis: ["GST Detailed III", "PAN to GST Detailed", "Udyam (optional)", "TAN (optional)"],
+    requiredDocs: ["GST Registration Certificate", "PAN Card", "Partnership deed"],
+    optionalDocLabels: ["Authorisation letter"],
+    requiresCin: false,
+    dinApplicable: false,
+    specialEntity: false,
+    entityPass: ["GST active", "PAN linked to GSTIN", "Constitution = Partnership", "Firm name matches GST name"],
+    signatoryPass: ["Partner name in deed/authorisation, or signatory letter accepted"],
+    conditionalPass: ["Entity passes but partner/authorisation proof pending"],
+    manualReview: ["Partnership deed missing", "Partner authority not machine-verifiable"],
+    fail: ["Individual PAN used where firm PAN expected", "PAN-GST mismatch", "Constitution not partnership", "No authorisation after deadline"],
+  },
+  Partnership: {
+    type: "Partnership",
+    alias: "Partnership Firm",
+    requiredApis: ["GST Detailed III", "PAN to GST Detailed", "Udyam (optional)", "TAN (optional)"],
+    requiredDocs: ["GST Registration Certificate", "PAN Card", "Partnership deed"],
+    optionalDocLabels: ["Authorisation letter"],
+    requiresCin: false,
+    dinApplicable: false,
+    specialEntity: false,
+    entityPass: ["Routed to Partnership Firm template"],
+    signatoryPass: ["Routed to Partnership Firm template"],
+    conditionalPass: ["Routed to Partnership Firm template"],
+    manualReview: ["Routed to Partnership Firm template"],
+    fail: ["Routed to Partnership Firm template"],
+  },
+  "Sole Proprietorship": {
+    type: "Sole Proprietorship",
+    requiredApis: ["Proprietor Detailed", "GST Detailed III", "PAN to GST Detailed", "Udyam (optional)"],
+    requiredDocs: ["GST Registration Certificate", "PAN Card"],
+    optionalDocLabels: ["Udyam certificate", "Authorisation letter"],
+    requiresCin: false,
+    dinApplicable: false,
+    specialEntity: false,
+    entityPass: ["proprietorPan = true", "gstCount >= 1", "Selected GST active", "Constitution = Proprietorship", "PAN-GST match", "Address matches"],
+    signatoryPass: ["User confirms proprietor", "Proprietor PAN matches submitted PAN"],
+    conditionalPass: ["Entity passes but proprietor identity/authorisation document pending"],
+    manualReview: ["Trade name differs from legal name", "GST active but filing false", "Udyam/GST names differ", "User not proprietor but claims authorisation"],
+    fail: ["proprietorPan = false", "No active GST under PAN", "Constitution not proprietorship", "User not proprietor and no authorisation"],
+  },
+  "HUF Business": {
+    type: "HUF Business",
+    requiredApis: ["GST Detailed III", "PAN to GST Detailed", "TAN (optional)"],
+    requiredDocs: ["GST Registration Certificate", "PAN Card", "Authorisation letter"],
+    optionalDocLabels: ["Authorisation letter"],
+    requiresCin: false,
+    dinApplicable: false,
+    specialEntity: false,
+    entityPass: ["GST active where provided", "PAN-GST linked", "Constitution maps to HUF", "Name aligns"],
+    signatoryPass: ["User is Karta or has Karta authorisation"],
+    conditionalPass: ["Karta authorisation pending"],
+    manualReview: ["HUF proof required", "Individual PAN used", "Karta identity unclear"],
+    fail: ["PAN-GST mismatch", "Constitution not HUF", "No Karta/authorisation proof"],
+  },
+  Society: {
+    type: "Society",
+    requiredApis: ["GST Detailed III", "PAN to GST Detailed", "TAN/EPFO (optional)"],
+    requiredDocs: ["Society registration certificate", "Authorisation letter"],
+    optionalDocLabels: ["GST Registration Certificate", "PAN Card"],
+    requiresCin: false,
+    dinApplicable: false,
+    specialEntity: true,
+    entityPass: ["GST active if available", "PAN-GST linked", "Name/address match", "Constitution Society/AOP/BOI-like"],
+    signatoryPass: ["Office bearer / authorised person proof matches user"],
+    conditionalPass: ["Entity passes but registration/authorisation proof pending"],
+    manualReview: ["Usually required if no GST", "Constitution label not explicit"],
+    fail: ["PAN/GST mismatch", "Unrelated GST entity", "No society registration proof", "No authority proof"],
+  },
+  Trust: {
+    type: "Trust",
+    requiredApis: ["GST Detailed III", "PAN to GST Detailed", "TAN (optional)"],
+    requiredDocs: ["Trust deed", "Authorisation letter"],
+    optionalDocLabels: ["GST Registration Certificate", "PAN Card"],
+    requiresCin: false,
+    dinApplicable: false,
+    specialEntity: true,
+    entityPass: ["GST active if available", "PAN-GST linked", "Trust name matches identity"],
+    signatoryPass: ["Trustee or authorised signatory proof matches user"],
+    conditionalPass: ["Trust deed/authorisation pending"],
+    manualReview: ["Default if no GST", "Private trust ambiguity", "Trustee list not machine-verifiable"],
+    fail: ["PAN/GST mismatch", "Entity name mismatch", "No trust deed/registration", "No trustee/authorisation"],
+  },
+  "Colleges and Universities (set up through enactment of a statute)": {
+    type: "Colleges and Universities (set up through enactment of a statute)",
+    requiredApis: ["GST Detailed III", "PAN to GST Detailed", "TAN/EPFO (optional)"],
+    requiredDocs: ["UGC/statutory recognition", "Authorisation letter"],
+    optionalDocLabels: ["GST Registration Certificate", "PAN Card"],
+    requiresCin: false,
+    dinApplicable: true,
+    specialEntity: true,
+    entityPass: ["GST/PAN matches institution or operating entity", "Statutory/institution proof accepted"],
+    signatoryPass: ["Registrar/admin/authorised officer proof matches user"],
+    conditionalPass: ["Entity identity passes but institution proof or authorisation pending"],
+    manualReview: ["Default if operator entity differs from institution brand"],
+    fail: ["GST/PAN belongs to unrelated entity", "No statutory/recognition proof", "No signatory authority"],
+  },
+  "Branch Office & Project Office": {
+    type: "Branch Office & Project Office",
+    requiredApis: ["GST Detailed III", "PAN to GST Detailed", "TAN (optional)", "IEC (optional)"],
+    requiredDocs: ["RBI approval", "Authorisation letter"],
+    optionalDocLabels: ["GST Registration Certificate", "PAN Card"],
+    requiresCin: false,
+    dinApplicable: true,
+    specialEntity: true,
+    entityPass: ["GST/PAN active and matches Indian branch/project office", "Approval documents accepted"],
+    signatoryPass: ["Authorised representative proof matches user"],
+    conditionalPass: ["Tax identity passes but approval/signatory proof pending"],
+    manualReview: ["Default mandatory"],
+    fail: ["PAN/GST mismatch", "No RBI/project approval", "Parent company mismatch", "No authorisation"],
+  },
+  "Liaison Office": {
+    type: "Liaison Office",
+    requiredApis: ["GST Detailed III (if GST exists)", "PAN to GST Detailed (if PAN exists)", "TAN (optional)"],
+    requiredDocs: ["RBI approval", "Authorisation letter"],
+    optionalDocLabels: ["GST Registration Certificate", "PAN Card"],
+    requiresCin: false,
+    dinApplicable: false,
+    specialEntity: true,
+    entityPass: ["Tax identity and approval documents match liaison office"],
+    signatoryPass: ["Authorised representative proof matches user"],
+    conditionalPass: ["Tax identity passes but RBI/signatory proof pending"],
+    manualReview: ["Default mandatory"],
+    fail: ["No approval proof", "Tax identity belongs to unrelated entity", "No authority proof"],
+  },
+  "Diplomatic Missions": {
+    type: "Diplomatic Missions",
+    requiredApis: ["GST Details (if GSTIN/UIN resolves)"],
+    requiredDocs: ["Diplomatic note / MEA proof", "Authorisation letter"],
+    optionalDocLabels: [],
+    requiresCin: false,
+    dinApplicable: false,
+    specialEntity: true,
+    entityPass: ["Official identifier and documents match mission name/address"],
+    signatoryPass: ["Authorised officer proof matches user"],
+    conditionalPass: ["Identifier matches but official authorisation pending"],
+    manualReview: ["Always mandatory"],
+    fail: ["Identifier does not resolve", "Mission name/address mismatch", "No official authorisation"],
+  },
+  Others: {
+    type: "Others",
+    requiredApis: ["GST Detailed III", "PAN to GST Detailed", "Company Name to GST", "Mobile to GST/Udyam (fallback)"],
+    requiredDocs: ["GST Registration Certificate", "PAN Card"],
+    optionalDocLabels: COMMON_OPTIONAL_DOCS,
+    requiresCin: false,
+    dinApplicable: false,
+    specialEntity: false,
+    entityPass: ["API output allows confident reclassification", "Reclassified template passes"],
+    signatoryPass: ["Based on reclassified type"],
+    conditionalPass: ["Entity reclassified but signatory proof pending"],
+    manualReview: ["Default if not reclassifiable"],
+    fail: ["PAN/GST conflict", "Fake docs", "Cannot establish legal constitution", "No authority proof"],
+  },
+};
+
+// Required document labels by business type (dynamic doc slots).
+export function getRequiredDocLabels(type: BusinessType | ""): { label: string; required: boolean }[] {
+  const base = [
+    { label: "GST Registration Certificate", required: true },
+    { label: "PAN Card / PAN proof", required: true },
+  ];
+  const extra: Record<string, string[]> = {
+    "Private Limited": ["Certificate of Incorporation", "Board resolution"],
+    "Public Limited": ["Certificate of Incorporation", "Board resolution"],
+    Company: ["Certificate of Incorporation", "Board resolution"],
+    "Limited Liability Partnership": ["LLP agreement", "Authorisation letter"],
+    "Partnership Firm": ["Partnership deed", "Authorisation letter"],
+    Partnership: ["Partnership deed", "Authorisation letter"],
+    "Sole Proprietorship": ["Udyam certificate", "Authorisation letter"],
+    "HUF Business": ["Authorisation letter", "PAN proof of Karta"],
+    Society: ["Society registration certificate", "Authorisation letter"],
+    Trust: ["Trust deed", "Authorisation letter"],
+    "Colleges and Universities (set up through enactment of a statute)": ["UGC/statutory recognition", "Authorisation letter"],
+    "Branch Office & Project Office": ["RBI approval", "Authorisation letter"],
+    "Liaison Office": ["RBI approval", "Authorisation letter"],
+    "Diplomatic Missions": ["Diplomatic note / MEA proof", "Authorisation letter"],
+    Others: ["Document 3 (optional)", "Document 4 (optional)"],
+  };
+  const list = (type && extra[type]) || ["Document 3 (optional)", "Document 4 (optional)"];
+  return [
+    ...base,
+    ...list.map((label, i) => ({ label, required: type ? i === 0 && !["Sole Proprietorship", "Others"].includes(type) : false })),
+  ];
+}
