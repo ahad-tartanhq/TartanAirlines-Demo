@@ -41,6 +41,7 @@ interface Workspace {
   confidence: string;
   kybInternal?: string;
   dinDeadline?: string;
+  legalNameAtOnboarding?: string;
 }
 
 // ---------- country-specific business identifiers & director identity ----------
@@ -56,7 +57,7 @@ interface CountryKybConfig {
 
 const COUNTRY_KYB: Record<string, CountryKybConfig> = {
   India: {
-    identifiers: [{ key: "gstin", label: "Company GSTIN", placeholder: "27AAICT4244L1ZY" }],
+    identifiers: [{ key: "gstin", label: "Company GSTIN", placeholder: "06AAICT4244L1Z2" }],
     fallback: { key: "udyam", label: "UDYAM registration number", placeholder: "UDYAM-MH-00-0000000" },
     director: { label: "DIN (Director Identification Number)", placeholder: "08123456", help: "For Directors / KMP with a Director Identification Number." },
   },
@@ -107,7 +108,7 @@ const DEMO_WORKSPACE: Workspace = {
   companyName: "TARTANHQ SOLUTIONS PRIVATE LIMITED",
   businessType: "Private Limited",
   country: "India",
-  knownIdentifiers: { gstin: "27AAICT4244L1ZY", pan: "AAICT4244L", cin: "U72900MH2021PTC000000" },
+  knownIdentifiers: { gstin: "06AAICT4244L1Z2", pan: "AAICT4244L", cin: "U72900MH2021PTC000000" },
   companyIdentificationStatus: "Domain Matched",
   workspaceStatus: "Active",
   kybStatus: "KYB Not Required Yet",
@@ -230,6 +231,42 @@ function companyIdentityKey(value: string): string {
     .replace(/[^a-z0-9]+/g, "");
 }
 
+interface TriangulationResult {
+  domainGstinMatch: boolean | null;
+  domainNameMatch: boolean | null;
+  gstinPanMatch: boolean | null;
+  allPass: boolean;
+}
+
+function checkTriangulation(workspace: Workspace, enteredGstin: string): TriangulationResult {
+  const knownGstin = workspace.knownIdentifiers.gstin ?? "";
+  const knownPan = workspace.knownIdentifiers.pan ?? "";
+
+  // Signal 1: domain ↔ GSTIN
+  const domainGstinMatch = knownGstin
+    ? enteredGstin.toUpperCase() === knownGstin.toUpperCase()
+    : null;
+
+  // Signal 2: domain ↔ user-typed legal name
+  const typed = workspace.legalNameAtOnboarding ?? "";
+  const typedKey = companyIdentityKey(typed);
+  const registryKey = companyIdentityKey(workspace.companyName);
+  const domainNameMatch = typedKey.length > 0
+    ? registryKey.includes(typedKey) || typedKey.includes(registryKey)
+    : null;
+
+  // Signal 3: GSTIN ↔ PAN (PAN is embedded at chars 3–12 of GSTIN)
+  const gstinPan = enteredGstin.length >= 12 ? enteredGstin.slice(2, 12).toUpperCase() : "";
+  const gstinPanMatch = knownPan && gstinPan
+    ? gstinPan === knownPan.toUpperCase()
+    : null;
+
+  const signals = [domainGstinMatch, domainNameMatch, gstinPanMatch].filter((s) => s !== null);
+  const allPass = signals.length > 0 && signals.every(Boolean);
+
+  return { domainGstinMatch, domainNameMatch, gstinPanMatch, allPass };
+}
+
 function legalNameMatchesDomainCompany(legalName: string, entry: NonNullable<ReturnType<typeof lookupDomain>>): boolean {
   const legalKey = companyIdentityKey(legalName);
   if (!legalKey) return true;
@@ -336,6 +373,7 @@ function OnboardingApp() {
       companyIdentificationStatus: "Domain Matched", workspaceStatus: "Active",
       kybStatus: "KYB Not Required Yet", accessLevel: "Standard Workspace",
       source: "internal_domain_registry", confidence: "high",
+      legalNameAtOnboarding: companyLegalName || undefined,
     };
     setWorkspace(ws);
     pushLog([
@@ -2372,8 +2410,8 @@ function KybUpgradeModal({ workspace, trigger, pushLog, onClose, onResult, onMem
   const t = useT();
   const isCompanyLike = ["Private Limited", "Public Limited", "Company"].includes(workspace.businessType);
   const businessType = (workspace.businessType || "Private Limited") as BusinessType;
-  // Identifier is optional only when the company was confirmed straight from the domain.
-  const identifierOptional = workspace.companyIdentificationStatus === "Domain Matched";
+  // Identifier is always required for verification.
+  const identifierOptional = false;
 
   const country = workspace.country || "India";
   const cfg = countryKyb(country);
@@ -2425,6 +2463,47 @@ function KybUpgradeModal({ workspace, trigger, pushLog, onClose, onResult, onMem
       udyam: udyamVal,
       documents: autoDocs(businessType),
     };
+    // Demo triangulation — fires only for domain-matched workspaces (TartanHQ et al.)
+    if (workspace.companyIdentificationStatus === "Domain Matched") {
+      const tri = checkTriangulation(workspace, gstinVal);
+      pushLog([
+        {
+          label: "Triangulation: domain ↔ GSTIN",
+          value: tri.domainGstinMatch === null
+            ? "skipped (no known GSTIN for domain)"
+            : tri.domainGstinMatch
+              ? "match ✓"
+              : `mismatch — entered ${gstinVal}, domain registry has ${workspace.knownIdentifiers.gstin}`,
+          tone: tri.domainGstinMatch === false ? "bad" : tri.domainGstinMatch ? "ok" : "info",
+        },
+        {
+          label: "Triangulation: domain ↔ legal name",
+          value: tri.domainNameMatch === null
+            ? "skipped (no name entered at sign-up)"
+            : tri.domainNameMatch
+              ? "match ✓"
+              : `mismatch — "${workspace.legalNameAtOnboarding}" vs "${workspace.companyName}"`,
+          tone: tri.domainNameMatch === false ? "warn" : tri.domainNameMatch ? "ok" : "info",
+        },
+        {
+          label: "Triangulation: GSTIN ↔ PAN",
+          value: tri.gstinPanMatch === null
+            ? "skipped (insufficient GSTIN length)"
+            : tri.gstinPanMatch
+              ? `PAN embedded in GSTIN matches registry ✓`
+              : `PAN mismatch — GSTIN embeds ${gstinVal.slice(2, 12)}, registry has ${workspace.knownIdentifiers.pan}`,
+          tone: tri.gstinPanMatch === false ? "bad" : tri.gstinPanMatch ? "ok" : "info",
+        },
+        {
+          label: "Triangulation verdict",
+          value: tri.allPass
+            ? "All signals corroborate"
+            : "One or more signals conflict — review before proceeding",
+          tone: tri.allPass ? "ok" : "warn",
+        },
+      ]);
+    }
+
     const dinRemembered = hasDirector && isCompanyLike && dinChoice === "now";
     const rep: RepresentativeClaim = { role: relationship, signatoryName, din: dinRemembered ? din : undefined, dinRemembered };
     const { api, inputPatch } = buildLiveBundle(input, rep, outcome);

@@ -26,7 +26,7 @@ interface SeedCompany {
 const SEED: SeedCompany[] = [
   {
     companyName: "TARTANHQ SOLUTIONS PRIVATE LIMITED",
-    gstin: "27AAICT4244L1ZY",
+    gstin: "06AAICT4244L1Z2",
     state: "Maharashtra",
     constitution: "Private Limited Company",
     pan: "AAICT4244L",

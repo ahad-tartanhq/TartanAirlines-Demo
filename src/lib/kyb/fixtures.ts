@@ -158,7 +158,7 @@ function iec(opts: { iec: string; pan: string; name: string; status?: string; ad
 // ---- Common constants for the Tartan sample ----
 const TARTAN = {
   name: "TARTANHQ SOLUTIONS PRIVATE LIMITED",
-  gstin: "27AAICT4244L1ZY",
+  gstin: "06AAICT4244L1Z2",
   pan: "AAICT4244L",
   cin: "U72900MH2018PTC312345",
   address: "FLOOR-3, 264/265, VASWANI CHAMBERS, DR ANNIE BESANT ROAD, WORLI COLONY, Mumbai, Maharashtra, 400030",

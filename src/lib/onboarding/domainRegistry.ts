@@ -26,7 +26,7 @@ export const DOMAIN_REGISTRY: Record<string, DomainRegistryEntry> = {
     legalEntityConfidence: "high",
     country: "India",
     knownIdentifiers: {
-      gstin: "27AAICT4244L1ZY",
+      gstin: "06AAICT4244L1Z2",
       pan: "AAICT4244L",
       cin: "U72900MH2021PTC000000",
     },
