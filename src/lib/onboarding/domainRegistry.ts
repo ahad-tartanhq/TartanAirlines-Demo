@@ -12,6 +12,7 @@ export interface DomainRegistryEntry {
     gstin?: string;
     pan?: string;
     cin?: string;
+    din?: string;
   };
   source: string;
   kybStatus: "not_required_yet";
@@ -29,6 +30,7 @@ export const DOMAIN_REGISTRY: Record<string, DomainRegistryEntry> = {
       gstin: "06AAICT4244L1Z2",
       pan: "AAICT4244L",
       cin: "U72900MH2021PTC000000",
+      din: "08123456",
     },
     source: "internal_domain_registry",
     kybStatus: "not_required_yet",

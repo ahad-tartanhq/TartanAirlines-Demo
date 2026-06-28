@@ -32,7 +32,7 @@ interface Workspace {
   companyName: string;
   businessType: string;
   country: string;
-  knownIdentifiers: { gstin?: string; pan?: string; cin?: string };
+  knownIdentifiers: { gstin?: string; pan?: string; cin?: string; din?: string };
   companyIdentificationStatus: CompanyIdentificationStatus;
   workspaceStatus: WorkspaceStatus;
   kybStatus: KybStatusModel;
@@ -269,7 +269,7 @@ function checkTriangulation(workspace: Workspace, enteredGstin: string): Triangu
 
 function legalNameMatchesDomainCompany(legalName: string, entry: NonNullable<ReturnType<typeof lookupDomain>>): boolean {
   const legalKey = companyIdentityKey(legalName);
-  if (!legalKey) return true;
+  if (!legalKey) return false;
   const domainRoot = entry.domain.split(".")[0] ?? "";
   return [entry.companyName, entry.displayName, domainRoot]
     .map(companyIdentityKey)
@@ -315,6 +315,7 @@ function OnboardingApp() {
     const c = classifyDomain(email);
     if (!c.valid) { setEmailErr(t("email.err.invalid")); return; }
     if (c.type === "disposable") { setEmailErr(t("email.err.disposable")); return; }
+    if (!companyLegalName.trim()) { setEmailErr("Company legal name is required."); return; }
     setEmailErr("");
     pushLog([
       { label: "Input email", value: c.email },
@@ -432,7 +433,8 @@ function OnboardingApp() {
   if (step === "workspace" && workspace) {
     return (
       <div className="min-h-screen bg-background text-foreground">
-        <Dashboard workspace={workspace} setWorkspace={setWorkspace} pushLog={pushLog} onRestart={resetAll} />
+        <Dashboard workspace={workspace} setWorkspace={setWorkspace} pushLog={pushLog} onRestart={resetAll} openConsole={() => setConsoleOpen(true)} />
+        <ConsoleDock open={consoleOpen} setOpen={setConsoleOpen} log={log} />
       </div>
     );
   }
@@ -693,7 +695,7 @@ function EmailScreen({ email, setEmail, emailErr, submitEmail, companyLegalName,
           <option key={c} value={c}>{c}</option>
         ))}
       </select>
-      <button className={`${btnPrimary} mt-5 w-full`} onClick={submitEmail}>{t("common.continue")}</button>
+      <button className={`${btnPrimary} mt-5 w-full`} disabled={!email.trim() || !companyLegalName.trim()} onClick={submitEmail}>{t("common.continue")}</button>
     </div>
   );
 }
@@ -788,12 +790,36 @@ type EmpRole = "Admin" | "Member";
 type SeniorityBand = "IC" | "Manager" | "Director" | "VP+";
 const SENIORITY_BANDS: readonly SeniorityBand[] = ["IC", "Manager", "Director", "VP+"] as const;
 const SENIORITY_RANK: Record<SeniorityBand, number> = { IC: 1, Manager: 2, Director: 3, "VP+": 4 };
+function groupNameForBand(band: SeniorityBand): string {
+  if (band === "VP+") return "Executive Group";
+  if (band === "Director") return "Director Group";
+  if (band === "Manager") return "Manager Group";
+  return "Organization Group";
+}
+
+interface PolicyDefaults { groupName: string; domesticCap: number; intlCap: number; domesticCabin: string; intlCabin: string; advanceDays: number; threshold: number }
+function parsePolicyFilename(filename: string): PolicyDefaults {
+  const s = filename.toLowerCase().replace(/\.[^.]+$/, "");
+  if (/exec|vp\b|c-suite|csuite|leadership|chief/.test(s))
+    return { groupName: "Executive Group", domesticCap: 30000, intlCap: 200000, domesticCabin: "Business", intlCabin: "Business", advanceDays: 2, threshold: 50000 };
+  if (/director|principal|sr[\s-]?mgr|senior[\s-]?manager/.test(s))
+    return { groupName: "Director Group", domesticCap: 20000, intlCap: 120000, domesticCabin: "Business", intlCabin: "Business", advanceDays: 3, threshold: 30000 };
+  if (/manager|lead|mgr/.test(s))
+    return { groupName: "Manager Group", domesticCap: 15000, intlCap: 80000, domesticCabin: "Premium Economy", intlCabin: "Premium Economy", advanceDays: 5, threshold: 20000 };
+  return { groupName: "Organization Group", domesticCap: 10000, intlCap: 60000, domesticCabin: "Economy", intlCabin: "Premium Economy", advanceDays: 7, threshold: 15000 };
+}
+
 // Best-effort map from a free-text CSV designation to a band (default IC).
 function bandFromDesignation(text: string): SeniorityBand {
   const s = text.toLowerCase();
-  if (/\b(vp|vice president|chief|c[etfo]o|founder|head)\b/.test(s)) return "VP+";
-  if (/\b(director|principal|sr\.? manager|senior manager)\b/.test(s)) return "Director";
-  if (/\b(manager|lead|team lead)\b/.test(s)) return "Manager";
+  // VP+ — C-suite, founders, presidents, heads of function
+  if (/\b(vp|vice[\s-]?president|chief|c[etfo]o|coo|cpo|cmo|chro|founder|co-founder|cofounder|president|partner|group head|global head|head of)\b/.test(s)) return "VP+";
+  // Director band — directors, principals, distinguished, staff-level engineers, senior managers
+  if (/\b(director|principal|staff\s+(?:engineer|sde|developer|architect|scientist)|distinguished|fellow|sr\.?\s*manager|senior\s+manager|associate\s+director|deputy\s+director|dept\s+head)\b/.test(s)) return "Director";
+  // Manager band — people managers, leads, supervisors, senior ICs
+  if (/\b(manager|lead|team\s+lead|tech\s+lead|engineering\s+lead|chapter\s+lead|squad\s+lead|supervisor|scrum\s+master|program\s+manager|project\s+manager|product\s+manager|delivery\s+manager)\b/.test(s)) return "Manager";
+  if (/\bsr\.?\s+\w|senior\s+\w/.test(s)) return "Manager";
+  // IC band — analysts, engineers, designers, executives (sales/ops), associates, interns, coordinators
   return "IC";
 }
 interface Employee {
@@ -838,7 +864,7 @@ function statusTone(s: string): "ok" | "warn" | "bad" | "info" {
 
 type Tab = "overview" | "employees" | "book" | "admin";
 
-function Dashboard({ workspace, setWorkspace, pushLog, onRestart }: { workspace: Workspace; setWorkspace: (w: Workspace) => void; pushLog: (e: LogEvent | LogEvent[]) => void; onRestart: () => void }) {
+function Dashboard({ workspace, setWorkspace, pushLog, onRestart, openConsole }: { workspace: Workspace; setWorkspace: (w: Workspace) => void; pushLog: (e: LogEvent | LogEvent[]) => void; onRestart: () => void; openConsole?: () => void }) {
   const t = useT();
   const accounts: ReadonlyArray<{ email: string; role: EmpRole }> = [
     { email: workspace.userEmail, role: "Admin" },
@@ -851,6 +877,10 @@ function Dashboard({ workspace, setWorkspace, pushLog, onRestart }: { workspace:
   const [employees, setEmployees] = useState<Employee[]>([
     { id: "u0", name: firstName, email: workspace.userEmail, role: "Admin", status: "Joined", addedBy: "—", date: formatDate(new Date().toISOString()), domainMatches: true, external: false, seniority: "Director" },
   ]);
+  const [groups, setGroups] = useState<OrgGroup[]>(DEMO_GROUPS);
+  const [policies, setPolicies] = useState<TravelPolicy[]>(DEMO_POLICIES);
+  const [rules, setRules] = useState<ApprovalRule[]>(DEMO_RULES);
+  const [approval, setApproval] = useState<ApprovalFlow>(DEMO_APPROVAL);
   const [bookings, setBookings] = useState<BookingRecord[]>([]);
   // Show the verification prompt automatically on first overview load when still pending.
   const [overviewKybOpen, setOverviewKybOpen] = useState(() => !isVerificationComplete(workspace.kybStatus));
@@ -903,12 +933,12 @@ function Dashboard({ workspace, setWorkspace, pushLog, onRestart }: { workspace:
       </div>
 
       {tab === "overview" && <Overview workspace={workspace} employees={employees} bookings={bookings} onGoto={setTab} isAdmin={isAdmin} onStartKyb={() => setOverviewKybOpen(true)} />}
-      {tab === "employees" && isAdmin && <Employees workspace={workspace} employees={employees} setEmployees={setEmployees} pushLog={pushLog} onContinue={() => setTab("book")} view="people" />}
-      {tab === "admin" && isAdmin && <Employees workspace={workspace} employees={employees} setEmployees={setEmployees} pushLog={pushLog} view="admin" />}
+      {tab === "employees" && isAdmin && <Employees workspace={workspace} employees={employees} setEmployees={setEmployees} groups={groups} setGroups={setGroups} policies={policies} setPolicies={setPolicies} rules={rules} setRules={setRules} approval={approval} setApproval={setApproval} pushLog={pushLog} onContinue={() => setTab("book")} view="people" />}
+      {tab === "admin" && isAdmin && <Employees workspace={workspace} employees={employees} setEmployees={setEmployees} groups={groups} setGroups={setGroups} policies={policies} setPolicies={setPolicies} rules={rules} setRules={setRules} approval={approval} setApproval={setApproval} pushLog={pushLog} view="admin" />}
       {tab === "book" && <BookFlow workspace={workspace} setWorkspace={setWorkspace} employees={employees} bookings={bookings} setBookings={setBookings} pushLog={pushLog} isAdmin={isAdmin} />}
 
       {overviewKybOpen && (
-        <KybUpgradeModal workspace={workspace} trigger="ADMIN_INITIATED" pushLog={pushLog}
+        <KybUpgradeModal workspace={workspace} trigger="ADMIN_INITIATED" pushLog={pushLog} openConsole={openConsole}
           onClose={() => setOverviewKybOpen(false)}
           onMemberContinue={() => { setOverviewKybOpen(false); setTab("book"); }}
           onResult={(w) => {
@@ -1215,7 +1245,6 @@ function ruleSummary(r: ApprovalRule, money: (n: number) => string, t: (k: strin
 interface ParsedRow { name: string; email: string; role: EmpRole; department: string; seniority: SeniorityBand; valid: boolean; issue?: string; external: boolean }
 
 function parseCsv(text: string, domain: string, existing: Employee[]): ParsedRow[] {
-  const t = useT();
   const lines = text.trim().split(/\r?\n/).filter((l) => l.trim());
   if (!lines.length) return [];
   const header = lines[0].toLowerCase();
@@ -1247,7 +1276,7 @@ function parseCsv(text: string, domain: string, existing: Employee[]): ParsedRow
   return rows;
 }
 
-function Employees({ workspace, employees, setEmployees, pushLog, onContinue, view = "people" }: { workspace: Workspace; employees: Employee[]; setEmployees: React.Dispatch<React.SetStateAction<Employee[]>>; pushLog: (e: LogEvent | LogEvent[]) => void; onContinue?: () => void; view?: "people" | "admin" }) {
+function Employees({ workspace, employees, setEmployees, groups, setGroups, policies, setPolicies, rules, setRules, approval, setApproval, pushLog, onContinue, view = "people" }: { workspace: Workspace; employees: Employee[]; setEmployees: React.Dispatch<React.SetStateAction<Employee[]>>; groups: OrgGroup[]; setGroups: React.Dispatch<React.SetStateAction<OrgGroup[]>>; policies: TravelPolicy[]; setPolicies: React.Dispatch<React.SetStateAction<TravelPolicy[]>>; rules: ApprovalRule[]; setRules: React.Dispatch<React.SetStateAction<ApprovalRule[]>>; approval: ApprovalFlow; setApproval: React.Dispatch<React.SetStateAction<ApprovalFlow>>; pushLog: (e: LogEvent | LogEvent[]) => void; onContinue?: () => void; view?: "people" | "admin" }) {
   const t = useT();
   const money = (n: number) => formatMoney(n, workspace.country);
   const isAdminView = view === "admin";
@@ -1264,16 +1293,19 @@ function Employees({ workspace, employees, setEmployees, pushLog, onContinue, vi
   const [hrmsSearch, setHrmsSearch] = useState("");
   const [sftp, setSftp] = useState(SFTP_DEFAULTS);
   const [orgTab, setOrgTab] = useState<"connections" | "regions" | "policies" | "approvals" | "groups">("connections");
-  const [policies, setPolicies] = useState<TravelPolicy[]>(DEMO_POLICIES);
-  const [approval, setApproval] = useState<ApprovalFlow>(DEMO_APPROVAL);
-  const [rules, setRules] = useState<ApprovalRule[]>(DEMO_RULES);
   const [editRule, setEditRule] = useState<ApprovalRule | null>(null);
   const [ruleConflict, setRuleConflict] = useState<ApprovalRule | null>(null);
-  const [groups, setGroups] = useState<OrgGroup[]>(DEMO_GROUPS);
   const [editPolicy, setEditPolicy] = useState<TravelPolicy | null>(null);
   const [groupOpen, setGroupOpen] = useState(false);
   const [newGroup, setNewGroup] = useState({ name: "" });
   const [uploadPolicy, setUploadPolicy] = useState<{ name: string; groupId: string; docName: string } | null>(null);
+  const [groupDetail, setGroupDetail] = useState<OrgGroup | null>(null);
+  const [addMemberEmail, setAddMemberEmail] = useState("");
+  const [uploadFlowStep, setUploadFlowStep] = useState<"pick" | "reading" | "review">("pick");
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadLogLines, setUploadLogLines] = useState<string[]>([]);
+  const [uploadSelectedGroups, setUploadSelectedGroups] = useState<string[]>([]);
+  const [uploadExtracted, setUploadExtracted] = useState<{ name: string; docName: string; domesticCap: number; domesticCabin: string; intlCap: number; intlCabin: string; advanceDays: number; threshold: number; cheaperFare: boolean } | null>(null);
 
   const parsed = parseCsv(csvText, workspace.domain, employees);
 
@@ -1312,11 +1344,32 @@ function Employees({ workspace, employees, setEmployees, pushLog, onContinue, vi
       id: `u_${Date.now()}_${i}`, name: r.name, email: r.email, role: r.role,
       status: "Joined", addedBy: workspace.userEmail, date: formatDate(new Date().toISOString()),
       domainMatches: !r.external, external: r.external, seniority: r.seniority,
+      group: groupNameForBand(r.seniority),
     }));
+
+    // Tally how many employees land in each group name
+    const tally: Record<string, number> = {};
+    for (const e of emps) tally[e.group!] = (tally[e.group!] ?? 0) + 1;
+
+    // Compute new groups synchronously from current closure value
+    const updatedGroups = groups.map((g) => ({ ...g }));
+    const newGroupNames: string[] = [];
+    for (const [gName, count] of Object.entries(tally)) {
+      const found = updatedGroups.find((g) => g.name === gName);
+      if (found) { found.members += count; }
+      else {
+        updatedGroups.push({ id: `g_auto_${gName.replace(/\s+/g, "_").toLowerCase()}`, name: gName, isDefault: false, members: count });
+        newGroupNames.push(gName);
+      }
+    }
+    setGroups(updatedGroups);
+
     setEmployees((l) => [...l, ...emps]);
     pushLog([
       { label: `${source} imported`, value: `${rows.length} rows parsed`, tone: "info" },
       { label: "Employees added", value: String(emps.length), tone: "ok" },
+      ...Object.entries(tally).map(([g, n]) => ({ label: "Auto-assigned to group", value: `${g} (${n})`, tone: "ok" as const })),
+      ...(newGroupNames.length ? [{ label: "Groups auto-created", value: newGroupNames.join(", "), tone: "ok" as const }] : []),
     ]);
   }
 
@@ -1460,7 +1513,7 @@ function Employees({ workspace, employees, setEmployees, pushLog, onContinue, vi
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-xs text-muted-foreground">{t("pol.desc")}</p>
             <div className="flex gap-2">
-              <button className={`${btnGhost} px-4 py-2 text-xs`} onClick={() => setUploadPolicy({ name: "", groupId: groups[0]?.id ?? "g_org", docName: "" })}>{t("pol.upload")}</button>
+              <button className={`${btnGhost} px-4 py-2 text-xs`} onClick={() => { setUploadFlowStep("pick"); setUploadExtracted(null); setUploadSelectedGroups([]); setUploadPolicy({ name: "", groupId: groups[0]?.id ?? "g_org", docName: "" }); }}>{t("pol.upload")}</button>
               <button className={`${btnGhost} px-4 py-2 text-xs`} onClick={() => setEditPolicy({ id: `p_${Date.now()}`, name: "", groupId: groups[0]?.id ?? "g_org", domesticCap: 12000, domesticCabin: "Economy", intlCap: 60000, intlCabin: "Premium Economy", advanceDays: 7, cheaperFare: true, threshold: 15000 })}>{t("pol.new")}</button>
             </div>
           </div>
@@ -1473,7 +1526,7 @@ function Employees({ workspace, employees, setEmployees, pushLog, onContinue, vi
                     <span className="text-sm font-semibold">{p.name}</span>
                   </div>
                   {p.docName
-                    ? <button className={`${btnGhost} px-3 py-1 text-xs`} onClick={() => setUploadPolicy({ name: p.name, groupId: p.groupId, docName: p.docName ?? "" })}>{t("pol.replace")}</button>
+                    ? <button className={`${btnGhost} px-3 py-1 text-xs`} onClick={() => { setUploadFlowStep("pick"); setUploadExtracted(null); setUploadSelectedGroups([]); setUploadPolicy({ name: p.name, groupId: p.groupId, docName: p.docName ?? "" }); }}>{t("pol.replace")}</button>
                     : <button className={`${btnGhost} px-3 py-1 text-xs`} onClick={() => setEditPolicy(p)}>{t("pol.edit")}</button>}
                 </div>
                 <div className="mb-2"><Pill tone="info">{groups.find((g) => g.id === p.groupId)?.name ?? t("pol.noGroup")}</Pill></div>
@@ -1600,14 +1653,16 @@ function Employees({ workspace, employees, setEmployees, pushLog, onContinue, vi
                 </tr>
               </thead>
               <tbody>
-                {groups.map((g) => (
-                  <tr key={g.id} className="border-b border-border/60">
+                {groups.map((g) => {
+                  const memberCount = employees.filter((e) => e.group === g.name).length;
+                  return (
+                  <tr key={g.id} className="cursor-pointer border-b border-border/60 hover:bg-accent/40 transition-colors" onClick={() => { setGroupDetail(g); setAddMemberEmail(""); }}>
                     <td className="py-2.5 pr-3 font-medium">{g.name}{g.isDefault && <span className="ml-1"><Pill tone="info">{t("grp.default")}</Pill></span>}</td>
-                    <td className="py-2.5 pr-3 text-muted-foreground">{g.members}</td>
+                    <td className="py-2.5 pr-3 text-muted-foreground">{memberCount}</td>
                     <td className="py-2.5 pr-3 text-muted-foreground">{policies.find((p) => p.groupId === g.id)?.name ?? "—"}</td>
                     <td className="py-2.5 pr-3 text-xs text-muted-foreground">{t("grp.mgrFinance")}</td>
                   </tr>
-                ))}
+                );})}
               </tbody>
             </table>
           </div>
@@ -1868,7 +1923,7 @@ function Employees({ workspace, employees, setEmployees, pushLog, onContinue, vi
                 </div>
                 <div className="flex justify-between gap-2">
                   <button className={`${btnGhost} text-sm`} onClick={() => setDataStep("hrms-config")}>{t("common.back")}</button>
-                  <button className={`${btnPrimary} text-sm`} disabled={!hrmsApiKey.trim()} onClick={() => importSample(hrmsPlatform)}>{t("dt.syncEmployees")}</button>
+                  <button className={`${btnPrimary} text-sm`} onClick={() => importSample(hrmsPlatform)}>{t("dt.syncEmployees")}</button>
                 </div>
               </div>
             )}
@@ -1979,51 +2034,198 @@ function Employees({ workspace, employees, setEmployees, pushLog, onContinue, vi
       )}
 
       {uploadPolicy && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 p-4" onClick={() => setUploadPolicy(null)}>
-          <div className="max-h-[88vh] w-full max-w-md overflow-y-auto rounded-2xl border border-border bg-background p-6 shadow-xl" onClick={(ev) => ev.stopPropagation()}>
-            <div className="mb-4 flex items-center justify-between">
-              <h3 className="text-lg font-bold">{t("upol.title")}</h3>
-              <button className="text-muted-foreground hover:text-foreground" onClick={() => setUploadPolicy(null)}>✕</button>
-            </div>
-            <div className="space-y-3">
-              <div>
-                <label className="mb-1 block text-xs font-medium">{t("epol.name")}</label>
-                <input className={inputCls} placeholder={t("upol.namePh")} value={uploadPolicy.name} onChange={(e) => setUploadPolicy((p) => p && ({ ...p, name: e.target.value }))} />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium">{t("epol.assignedGroup")}</label>
-                <select className={inputCls} value={uploadPolicy.groupId} onChange={(e) => setUploadPolicy((p) => p && ({ ...p, groupId: e.target.value }))}>
-                  {groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium">{t("upol.doc")}</label>
-                <label className={`${btnGhost} flex cursor-pointer items-center justify-center px-4 py-3 text-xs`}>
-                  {uploadPolicy.docName ? `✓ ${uploadPolicy.docName}` : t("upol.choose")}
-                  <input type="file" accept=".pdf,.doc,.docx" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) setUploadPolicy((p) => p && ({ ...p, docName: f.name, name: p.name || f.name.replace(/\.[^.]+$/, "") })); e.target.value = ""; }} />
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 p-4" onClick={() => uploadFlowStep !== "reading" ? setUploadPolicy(null) : undefined}>
+          <div className="max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-border bg-background p-6 shadow-xl" onClick={(ev) => ev.stopPropagation()}>
+
+            {/* Step 1: pick file */}
+            {uploadFlowStep === "pick" && (
+              <>
+                <div className="mb-5 flex items-center justify-between">
+                  <h3 className="text-lg font-bold">Upload policy document</h3>
+                  <button className="text-muted-foreground hover:text-foreground" onClick={() => setUploadPolicy(null)}>✕</button>
+                </div>
+                <label className="flex cursor-pointer flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-border bg-secondary/30 px-6 py-12 text-center transition hover:border-foreground/40 hover:bg-secondary/50">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                  <div>
+                    <p className="text-sm font-semibold">Drop your policy document here</p>
+                    <p className="mt-1 text-xs text-muted-foreground">PDF, DOC or DOCX · We'll extract the rules automatically</p>
+                  </div>
+                  <span className={`${btnGhost} pointer-events-none px-5 py-2 text-xs`}>Choose file</span>
+                  <input type="file" accept=".pdf,.doc,.docx" className="hidden" onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (!f) return;
+                    e.target.value = "";
+                    const defaults = parsePolicyFilename(f.name);
+                    const inferredName = f.name.replace(/\.[^.]+$/, "").replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+                    // Ensure inferred group exists
+                    const gid = `g_auto_${defaults.groupName.replace(/\s+/g, "_").toLowerCase()}`;
+                    setGroups((prev) => prev.find((g) => g.name === defaults.groupName) ? prev : [...prev, { id: gid, name: defaults.groupName, isDefault: false, members: 0 }]);
+                    const resolvedGid = groups.find((g) => g.name === defaults.groupName)?.id ?? gid;
+                    setUploadSelectedGroups([resolvedGid]);
+                    setUploadExtracted({ name: inferredName, docName: f.name, domesticCap: defaults.domesticCap, domesticCabin: defaults.domesticCabin, intlCap: defaults.intlCap, intlCabin: defaults.intlCabin, advanceDays: defaults.advanceDays, threshold: defaults.threshold, cheaperFare: true });
+                    // Start reading animation
+                    setUploadFlowStep("reading");
+                    setUploadProgress(0);
+                    setUploadLogLines([]);
+                    const STEPS = [
+                      { ms: 350,  pct: 18, line: `Uploading ${f.name}…` },
+                      { ms: 900,  pct: 38, line: "Reading document structure…" },
+                      { ms: 1500, pct: 58, line: "Extracting travel rules and budget caps…" },
+                      { ms: 2100, pct: 76, line: "Identifying employee tier and cabin class…" },
+                      { ms: 2700, pct: 92, line: "Mapping rules to travel groups…" },
+                      { ms: 3200, pct: 100, line: "✓ Policy parsed successfully" },
+                    ];
+                    STEPS.forEach(({ ms, pct, line }) => setTimeout(() => { setUploadProgress(pct); setUploadLogLines((l) => [...l, line]); }, ms));
+                    setTimeout(() => setUploadFlowStep("review"), 3600);
+                  }} />
                 </label>
-                <p className="mt-1 text-xs text-muted-foreground">{t("upol.desc")}</p>
+              </>
+            )}
+
+            {/* Step 2: reading animation */}
+            {uploadFlowStep === "reading" && uploadExtracted && (
+              <div className="py-4">
+                <div className="mb-5 flex items-center gap-3">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-secondary">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                  </div>
+                  <div>
+                    <div className="text-sm font-semibold">{uploadExtracted.docName}</div>
+                    <div className="text-xs text-muted-foreground">Reading document…</div>
+                  </div>
+                </div>
+                <div className="mb-4 h-1.5 w-full overflow-hidden rounded-full bg-secondary">
+                  <div className="h-full rounded-full bg-foreground transition-all duration-500" style={{ width: `${uploadProgress}%` }} />
+                </div>
+                <ul className="space-y-2">
+                  {uploadLogLines.map((line, i) => (
+                    <li key={i} className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-foreground/40" />
+                      {line}
+                    </li>
+                  ))}
+                </ul>
               </div>
-            </div>
-            <button
-              className={`${btnPrimary} mt-5 w-full`}
-              disabled={!uploadPolicy.name.trim() || !uploadPolicy.docName}
-              onClick={() => {
-                setPolicies((l) => {
-                  const existing = l.find((x) => x.docName && x.name === uploadPolicy.name);
-                  const policy: TravelPolicy = {
-                    id: existing?.id ?? `p_${Date.now()}`, name: uploadPolicy.name.trim(), groupId: uploadPolicy.groupId,
-                    domesticCap: 0, domesticCabin: "Economy", intlCap: 0, intlCabin: "Economy",
-                    advanceDays: 0, cheaperFare: false, threshold: 0, docName: uploadPolicy.docName,
-                  };
-                  return existing ? l.map((x) => x.id === existing.id ? policy : x) : [...l, policy];
-                });
-                pushLog({ label: "Policy document uploaded", value: `${uploadPolicy.name} → ${groups.find((g) => g.id === uploadPolicy.groupId)?.name ?? ""}`, tone: "ok" });
-                setUploadPolicy(null);
-              }}
-            >
-              Save policy
-            </button>
+            )}
+
+            {/* Step 3: review & assign */}
+            {uploadFlowStep === "review" && uploadExtracted && (
+              <>
+                <div className="mb-5 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="flex h-7 w-7 items-center justify-center rounded-full bg-foreground text-background text-xs">✓</div>
+                    <h3 className="text-lg font-bold">Review extracted policy</h3>
+                  </div>
+                  <button className="text-muted-foreground hover:text-foreground" onClick={() => setUploadPolicy(null)}>✕</button>
+                </div>
+                <p className="mb-4 text-xs text-muted-foreground">We extracted these rules from <span className="font-medium text-foreground">{uploadExtracted.docName}</span>. Edit anything before saving.</p>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="mb-1 block text-xs font-medium">Policy name</label>
+                    <input className={inputCls} value={uploadExtracted.name} onChange={(e) => setUploadExtracted((x) => x && ({ ...x, name: e.target.value }))} />
+                  </div>
+
+                  <div className="rounded-xl border border-border p-4">
+                    <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Domestic flights</div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="mb-1 block text-xs font-medium">Budget cap (₹)</label>
+                        <input className={inputCls} value={uploadExtracted.domesticCap} onChange={(e) => setUploadExtracted((x) => x && ({ ...x, domesticCap: Number(e.target.value.replace(/\D/g, "")) || 0 }))} />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-medium">Cabin class</label>
+                        <select className={inputCls} value={uploadExtracted.domesticCabin} onChange={(e) => setUploadExtracted((x) => x && ({ ...x, domesticCabin: e.target.value }))}>
+                          {CABIN_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-border p-4">
+                    <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">International flights</div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="mb-1 block text-xs font-medium">Budget cap (₹)</label>
+                        <input className={inputCls} value={uploadExtracted.intlCap} onChange={(e) => setUploadExtracted((x) => x && ({ ...x, intlCap: Number(e.target.value.replace(/\D/g, "")) || 0 }))} />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-medium">Cabin class</label>
+                        <select className={inputCls} value={uploadExtracted.intlCabin} onChange={(e) => setUploadExtracted((x) => x && ({ ...x, intlCabin: e.target.value }))}>
+                          {CABIN_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="mb-1 block text-xs font-medium">Book ahead (days)</label>
+                      <input className={inputCls} value={uploadExtracted.advanceDays} onChange={(e) => setUploadExtracted((x) => x && ({ ...x, advanceDays: Number(e.target.value.replace(/\D/g, "")) || 0 }))} />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-medium">Approval threshold (₹)</label>
+                      <input className={inputCls} value={uploadExtracted.threshold} onChange={(e) => setUploadExtracted((x) => x && ({ ...x, threshold: Number(e.target.value.replace(/\D/g, "")) || 0 }))} />
+                    </div>
+                  </div>
+
+                  <label className="flex items-center gap-2 text-xs font-medium">
+                    <input type="checkbox" className="h-4 w-4 accent-primary" checked={uploadExtracted.cheaperFare} onChange={(e) => setUploadExtracted((x) => x && ({ ...x, cheaperFare: e.target.checked }))} />
+                    Recommend cheaper fares to travellers
+                  </label>
+
+                  <div className="rounded-xl border border-border p-4">
+                    <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Apply to groups</div>
+                    <div className="space-y-2">
+                      {groups.map((g) => (
+                        <label key={g.id} className="flex cursor-pointer items-center gap-2.5 text-sm">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 accent-primary"
+                            checked={uploadSelectedGroups.includes(g.id)}
+                            onChange={(e) => setUploadSelectedGroups((prev) => e.target.checked ? [...prev, g.id] : prev.filter((id) => id !== g.id))}
+                          />
+                          <span className="font-medium">{g.name}</span>
+                          {g.isDefault && <Pill tone="info">Default</Pill>}
+                          <span className="ml-auto text-xs text-muted-foreground">{employees.filter((emp) => emp.group === g.name).length} members</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  className={`${btnPrimary} mt-5 w-full`}
+                  disabled={!uploadExtracted.name.trim() || uploadSelectedGroups.length === 0}
+                  onClick={() => {
+                    const base = uploadExtracted;
+                    const newPolicies: TravelPolicy[] = uploadSelectedGroups.map((gid) => ({
+                      id: `p_${Date.now()}_${gid}`,
+                      name: uploadSelectedGroups.length > 1
+                        ? `${base.name} — ${groups.find((g) => g.id === gid)?.name ?? gid}`
+                        : base.name,
+                      groupId: gid,
+                      domesticCap: base.domesticCap, domesticCabin: base.domesticCabin,
+                      intlCap: base.intlCap, intlCabin: base.intlCabin,
+                      advanceDays: base.advanceDays, cheaperFare: base.cheaperFare,
+                      threshold: base.threshold, docName: base.docName,
+                    }));
+                    setPolicies((l) => [...l, ...newPolicies]);
+                    pushLog([
+                      { label: "Policy document uploaded", value: base.docName, tone: "ok" },
+                      { label: "Policies created", value: newPolicies.map((p) => p.name).join(", "), tone: "ok" },
+                      { label: "Groups assigned", value: uploadSelectedGroups.map((id) => groups.find((g) => g.id === id)?.name ?? id).join(", "), tone: "info" },
+                    ]);
+                    setUploadPolicy(null);
+                    setUploadFlowStep("pick");
+                    setUploadExtracted(null);
+                    setUploadSelectedGroups([]);
+                  }}
+                >
+                  Save {uploadSelectedGroups.length > 1 ? `${uploadSelectedGroups.length} policies` : "policy"}
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -2055,6 +2257,109 @@ function Employees({ workspace, employees, setEmployees, pushLog, onContinue, vi
             >
               Create group
             </button>
+          </div>
+        </div>
+      )}
+
+      {groupDetail && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 p-4" onClick={() => setGroupDetail(null)}>
+          <div className="max-h-[80vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-border bg-background p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-bold">{groupDetail.name}</h3>
+              <button className="text-muted-foreground hover:text-foreground" onClick={() => setGroupDetail(null)}>✕</button>
+            </div>
+
+            {/* Policy assignment */}
+            <div className="mb-5 rounded-xl border border-border bg-card p-4">
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">Travel Policy</label>
+              <div className="flex gap-2">
+                <select
+                  className={`${inputCls} flex-1`}
+                  value={policies.find((p) => p.groupId === groupDetail.id)?.id ?? ""}
+                  onChange={(e) => {
+                    const selectedId = e.target.value;
+                    setPolicies((prev) => prev.map((p) => {
+                      if (p.groupId === groupDetail.id) return { ...p, groupId: "" };
+                      if (p.id === selectedId) return { ...p, groupId: groupDetail.id };
+                      return p;
+                    }));
+                    const pol = policies.find((p) => p.id === selectedId);
+                    pushLog({ label: "Policy assigned", value: `${pol?.name ?? "none"} → ${groupDetail.name}`, tone: "ok" });
+                  }}
+                >
+                  <option value="">— no policy —</option>
+                  {policies.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+              {(() => {
+                const pol = policies.find((p) => p.groupId === groupDetail.id);
+                if (!pol) return null;
+                return (
+                  <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                    <span>Domestic cap: <span className="font-medium text-foreground">₹{pol.domesticCap.toLocaleString()} · {pol.domesticCabin}</span></span>
+                    <span>International cap: <span className="font-medium text-foreground">₹{pol.intlCap.toLocaleString()} · {pol.intlCabin}</span></span>
+                    <span>Book ahead: <span className="font-medium text-foreground">{pol.advanceDays} days</span></span>
+                    <span>Approval over: <span className="font-medium text-foreground">₹{pol.threshold.toLocaleString()}</span></span>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Member list */}
+            <div className="mb-4 space-y-1">
+              {employees.filter((e) => e.group === groupDetail.name).length === 0 && (
+                <p className="text-sm text-muted-foreground">No members yet.</p>
+              )}
+              {employees.filter((e) => e.group === groupDetail.name).map((e) => (
+                <div key={e.id} className="flex items-center justify-between rounded-xl border border-border bg-card px-3 py-2.5">
+                  <div>
+                    <div className="text-sm font-medium">{e.name}</div>
+                    <div className="text-xs text-muted-foreground">{e.email} · {e.seniority}</div>
+                  </div>
+                  <button
+                    className="text-xs text-muted-foreground hover:text-destructive"
+                    onClick={() => {
+                      setEmployees((l) => l.map((x) => x.id === e.id ? { ...x, group: "Organization Group" } : x));
+                      pushLog({ label: "Removed from group", value: `${e.name} → Organization Group`, tone: "info" });
+                    }}
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            {/* Add member */}
+            <div className="border-t border-border pt-4">
+              <label className="mb-1.5 block text-xs font-medium">Add member</label>
+              <div className="flex gap-2">
+                <select
+                  className={`${inputCls} flex-1`}
+                  value={addMemberEmail}
+                  onChange={(e) => setAddMemberEmail(e.target.value)}
+                >
+                  <option value="">— select employee —</option>
+                  {employees.filter((e) => e.group !== groupDetail.name).map((e) => (
+                    <option key={e.id} value={e.email}>{e.name} · {e.seniority}</option>
+                  ))}
+                </select>
+                <button
+                  className={btnPrimary}
+                  disabled={!addMemberEmail}
+                  onClick={() => {
+                    const emp = employees.find((e) => e.email === addMemberEmail);
+                    if (!emp) return;
+                    setEmployees((l) => l.map((x) => x.email === addMemberEmail ? { ...x, group: groupDetail.name } : x));
+                    pushLog({ label: "Added to group", value: `${emp.name} → ${groupDetail.name}`, tone: "ok" });
+                    setAddMemberEmail("");
+                  }}
+                >
+                  Add
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -2406,7 +2711,7 @@ function BookFlow({ workspace, setWorkspace, employees, bookings, setBookings, p
 
 
 // ---------- progressive KYB modal ----------
-function KybUpgradeModal({ workspace, trigger, pushLog, onClose, onResult, onMemberContinue }: { workspace: Workspace; trigger: KybTrigger; pushLog: (e: LogEvent | LogEvent[]) => void; onClose: () => void; onResult: (w: Workspace) => void; onMemberContinue?: () => void }) {
+function KybUpgradeModal({ workspace, trigger, pushLog, onClose, onResult, onMemberContinue, openConsole }: { workspace: Workspace; trigger: KybTrigger; pushLog: (e: LogEvent | LogEvent[]) => void; onClose: () => void; onResult: (w: Workspace) => void; onMemberContinue?: () => void; openConsole?: () => void }) {
   const t = useT();
   const isCompanyLike = ["Private Limited", "Public Limited", "Company"].includes(workspace.businessType);
   const businessType = (workspace.businessType || "Private Limited") as BusinessType;
@@ -2424,6 +2729,9 @@ function KybUpgradeModal({ workspace, trigger, pushLog, onClose, onResult, onMem
   // How the user proves authority: director identity, an uploaded Board Resolution, or provide later.
   const [authMethod, setAuthMethod] = useState<"din" | "document" | "later">(hasDirector ? "din" : "document");
   const [boardDoc, setBoardDoc] = useState<string>("");
+  const [brFlowStep, setBrFlowStep] = useState<"idle" | "reading" | "verified">("idle");
+  const [brProgress, setBrProgress] = useState(0);
+  const [brLogLines, setBrLogLines] = useState<string[]>([]);
   const [din, setDin] = useState(cfg.director?.placeholder ?? "");
   const defaultSignatoryName = workspace.userEmail.split("@")[0].replace(/[._-].*/, "").replace(/^\w/, (c) => c.toUpperCase());
   const [signatoryNameInput, setSignatoryNameInput] = useState(defaultSignatoryName);
@@ -2433,7 +2741,14 @@ function KybUpgradeModal({ workspace, trigger, pushLog, onClose, onResult, onMem
   const activeFields = useFallback && cfg.fallback ? [cfg.fallback] : cfg.identifiers;
   const [idValues, setIdValues] = useState<Record<string, string>>({});
   const requiredFilled = activeFields.filter((f) => !f.optional).every((f) => (idValues[f.key] ?? "").trim().length >= 2);
-  const idValid = identifierOptional || requiredFilled;
+
+  // For domain-matched workspaces: GSTIN must exactly match the known value.
+  const isDomainMatched = workspace.companyIdentificationStatus === "Domain Matched";
+  const knownGstin = (workspace.knownIdentifiers.gstin ?? "").toUpperCase();
+  const typedGstin = (idValues.gstin ?? "").trim().toUpperCase();
+  const gstinMismatch = isDomainMatched && !useFallback && knownGstin && typedGstin.length > 0 && typedGstin !== knownGstin;
+  const idValid = !gstinMismatch && (identifierOptional || requiredFilled);
+
   const signatoryName = signatoryNameInput.trim();
   const signatoryNameValid = signatoryName.length >= 2;
   const idSummary = () => activeFields.map((f) => `${f.label}: ${(idValues[f.key] ?? "").trim() || "—"}`).join(" · ");
@@ -2445,6 +2760,7 @@ function KybUpgradeModal({ workspace, trigger, pushLog, onClose, onResult, onMem
   const [declAck, setDeclAck] = useState(false);
 
   function run() {
+    openConsole?.();
     const formCreatedAt = new Date().toISOString();
     const nowIso = new Date().toISOString();
     const ki = workspace.knownIdentifiers;
@@ -2578,20 +2894,26 @@ function KybUpgradeModal({ workspace, trigger, pushLog, onClose, onResult, onMem
                 />
                 <p className="mt-1 text-xs text-muted-foreground">{t("kyb.signatoryNameHelp")}</p>
               </div>
-              {activeFields.map((f) => (
+              {activeFields.map((f) => {
+                const showGstinErr = f.key === "gstin" && gstinMismatch;
+                return (
                 <div key={f.key}>
                   <div className="mb-2 flex items-center justify-between">
                     <label className="text-sm font-medium">{f.label}</label>
                     {(f.optional || identifierOptional) && <Pill>{t("common.optional")}</Pill>}
                   </div>
                   <input
-                    className={`${inputCls} placeholder:text-muted-foreground/40`}
+                    className={`${inputCls} placeholder:text-muted-foreground/40 ${showGstinErr ? "border-destructive ring-1 ring-destructive" : ""}`}
                     value={idValues[f.key] ?? ""}
                     onChange={(e) => setIdValues((v) => ({ ...v, [f.key]: e.target.value }))}
                     placeholder={f.placeholder}
                   />
+                  {showGstinErr && (
+                    <p className="mt-1 text-xs text-destructive">GSTIN does not match our records for this domain.</p>
+                  )}
                 </div>
-              ))}
+                );
+              })}
               {cfg.fallback && (
                 <button type="button"
                   className="text-xs font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
@@ -2665,7 +2987,20 @@ function KybUpgradeModal({ workspace, trigger, pushLog, onClose, onResult, onMem
 
         {stage === "rep" && (
           <div className="space-y-4">
-            <div className="space-y-3 rounded-xl border border-border bg-card p-4">
+            {/* Signatory name — always required first */}
+            <div>
+              <label className="mb-1 block text-xs font-semibold">Full name of signatory</label>
+              <input
+                className={inputCls}
+                placeholder="e.g. Rahul Sharma"
+                value={signatoryNameInput}
+                onChange={(e) => setSignatoryNameInput(e.target.value)}
+                autoFocus
+              />
+              <p className="mt-1 text-xs text-muted-foreground">This must match the name on the document you provide below.</p>
+            </div>
+
+            <div className={`space-y-3 rounded-xl border border-border bg-card p-4 transition-opacity ${!signatoryNameValid ? "pointer-events-none opacity-40" : ""}`}>
               <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("kyb.chooseAuthority")}</div>
               <div className="flex items-stretch gap-3">
                 {hasDirector && (
@@ -2688,7 +3023,7 @@ function KybUpgradeModal({ workspace, trigger, pushLog, onClose, onResult, onMem
                 )}
                 <button
                   type="button"
-                  onClick={() => { setAuthMethod("document"); setDinChoice("now"); }}
+                  onClick={() => { setAuthMethod("document"); setDinChoice("now"); setBrFlowStep("idle"); setBoardDoc(""); }}
                   className={`flex-1 rounded-xl border p-3 text-left transition-colors ${authMethod === "document" ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border bg-background hover:border-foreground/30"}`}
                 >
                   <div className="flex items-center justify-between">
@@ -2700,16 +3035,93 @@ function KybUpgradeModal({ workspace, trigger, pushLog, onClose, onResult, onMem
                   <p className="mt-1 text-xs text-muted-foreground">{t("kyb.boardResolutionHelp")}</p>
                 </button>
               </div>
-              {hasDirector && authMethod === "din" && <input className={inputCls} placeholder={cfg.director!.placeholder} value={din} onChange={(e) => setDin(e.target.value)} />}
+
+              {/* DIN input */}
+              {hasDirector && authMethod === "din" && (
+                <input
+                  className={`${inputCls} ${isDomainMatched && workspace.knownIdentifiers.din && din.trim() && din.trim() !== workspace.knownIdentifiers.din ? "border-destructive ring-1 ring-destructive" : ""}`}
+                  placeholder={cfg.director!.placeholder}
+                  value={din}
+                  onChange={(e) => setDin(e.target.value)}
+                />
+              )}
+
+              {/* Board Resolution upload flow */}
               {authMethod === "document" && (
-                <label className="flex cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-border bg-background px-4 py-6 text-center text-sm text-muted-foreground hover:text-foreground">
-                  <span className="font-medium">{boardDoc || t("kyb.uploadBoard")}</span>
-                  <span className="text-xs">{t("kyb.fileTypes")}</span>
-                  <input type="file" className="hidden" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => setBoardDoc(e.target.files?.[0]?.name ?? "")} />
-                </label>
+                <>
+                  {brFlowStep === "idle" && (
+                    <label className="flex cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-border bg-background px-4 py-6 text-center text-sm text-muted-foreground transition hover:border-foreground/40 hover:text-foreground">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="mb-1 h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                      <span className="font-medium">{t("kyb.uploadBoard")}</span>
+                      <span className="text-xs">{t("kyb.fileTypes")}</span>
+                      <input type="file" className="hidden" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (!f) return;
+                        e.target.value = "";
+                        setBoardDoc(f.name);
+                        setBrFlowStep("reading");
+                        setBrProgress(0);
+                        setBrLogLines([]);
+                        const STEPS = [
+                          { ms: 300,  pct: 20, line: `Uploading ${f.name}…` },
+                          { ms: 850,  pct: 42, line: "Reading Board Resolution structure…" },
+                          { ms: 1450, pct: 63, line: "Extracting signatory details…" },
+                          { ms: 2000, pct: 80, line: "Verifying company name and authorisation date…" },
+                          { ms: 2550, pct: 95, line: `Matching signatory "${signatoryNameInput.trim()}"…` },
+                          { ms: 3050, pct: 100, line: `✓ Signatory verified — name matches` },
+                        ];
+                        STEPS.forEach(({ ms, pct, line }) => setTimeout(() => { setBrProgress(pct); setBrLogLines((l) => [...l, line]); }, ms));
+                        setTimeout(() => setBrFlowStep("verified"), 3400);
+                      }} />
+                    </label>
+                  )}
+
+                  {brFlowStep === "reading" && (
+                    <div className="rounded-xl border border-border bg-background px-4 py-4">
+                      <div className="mb-3 flex items-center gap-2.5">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 shrink-0 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                        <span className="text-xs font-medium">{boardDoc}</span>
+                      </div>
+                      <div className="mb-3 h-1.5 w-full overflow-hidden rounded-full bg-secondary">
+                        <div className="h-full rounded-full bg-foreground transition-all duration-500" style={{ width: `${brProgress}%` }} />
+                      </div>
+                      <ul className="space-y-1.5">
+                        {brLogLines.map((line, i) => (
+                          <li key={i} className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-foreground/40" />
+                            {line}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {brFlowStep === "verified" && (
+                    <div className="space-y-2.5">
+                      <div className="flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-50/60 px-4 py-3 dark:bg-emerald-950/20">
+                        <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white text-[10px] font-bold">✓</div>
+                        <div>
+                          <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-300">Board Resolution verified</p>
+                          <p className="mt-0.5 text-xs text-emerald-700/80 dark:text-emerald-400/80">Signatory <span className="font-medium">{signatoryNameInput.trim()}</span> found in document · {boardDoc}</p>
+                        </div>
+                      </div>
+                      <button type="button" className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2" onClick={() => { setBrFlowStep("idle"); setBoardDoc(""); setBrLogLines([]); setBrProgress(0); }}>Upload a different document</button>
+                    </div>
+                  )}
+                </>
               )}
             </div>
-            <button className={`${btnPrimary} w-full`} disabled={authMethod === "din" ? !din.trim() : !boardDoc} onClick={() => { setDinChoice("now"); run(); }}>{t("kyb.confirmAuthorityBtn")}</button>
+
+            <button
+              className={`${btnPrimary} w-full`}
+              disabled={
+                !signatoryNameValid ||
+                (authMethod === "din" ? (!din.trim() || (isDomainMatched && !!workspace.knownIdentifiers.din && din.trim() !== workspace.knownIdentifiers.din)) : brFlowStep !== "verified")
+              }
+              onClick={() => { setDinChoice("now"); run(); }}
+            >
+              {t("kyb.confirmAuthorityBtn")}
+            </button>
             <button className="w-full text-center text-xs text-muted-foreground hover:text-foreground" onClick={() => { setAuthMethod("later"); setDinChoice("later"); run(); }}>{t("kyb.provideLater")}</button>
           </div>
         )}
@@ -2725,29 +3137,5 @@ function Row({ k, v }: { k: string; v: string }) {
 // ---------- backend console ----------
 function ConsoleDock({ open, setOpen, log }: { open: boolean; setOpen: (b: boolean) => void; log: LogEvent[] }) {
   const t = useT();
-  return (
-    <>
-      <button onClick={() => setOpen(!open)} className="fixed bottom-5 right-5 z-30 rounded-full bg-foreground px-4 py-2.5 text-xs font-semibold text-background shadow-lg">
-        {t(open ? "console.hide" : "console.show")}
-      </button>
-      {open && (
-        <div className="fixed bottom-20 right-5 z-30 max-h-[60vh] w-[min(92vw,420px)] overflow-y-auto rounded-2xl border border-border bg-card p-4 shadow-2xl">
-          <div className="mb-2 flex items-center justify-between">
-            <span className="text-sm font-semibold">{t("console.title")}</span>
-            <Pill>{t("console.events", { n: log.length })}</Pill>
-          </div>
-          <p className="mb-3 text-xs text-muted-foreground">{t("console.desc")}</p>
-          <ul className="space-y-1.5 font-mono text-[11px]">
-            {log.length === 0 && <li className="text-muted-foreground">{t("console.noEvents")}</li>}
-            {log.map((e, i) => (
-              <li key={i} className="flex gap-2">
-                <span className={`mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full ${e.tone === "ok" ? "bg-foreground" : e.tone === "bad" ? "bg-border" : "bg-muted-foreground"}`} />
-                <span><span className="text-muted-foreground">{e.label}:</span> {e.value}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </>
-  );
+  return null;
 }
